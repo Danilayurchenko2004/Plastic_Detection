@@ -1,3 +1,4 @@
+import torch
 from ultralytics import YOLO
 from pathlib import Path
 import logging
@@ -10,20 +11,34 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-model = YOLO('runs/detect/train2/weights/best.pt')
+model = YOLO('runs/detect/train3/weights/best.pt')
 
 input_dir = Path('datasets/test/images')
+labels_dir = Path('datasets/test/labels')
 
 writer = SummaryWriter(log_dir='logs/tensorboard')
 
+def get_gt_count(label_path):
+    if label_path.exists():
+        with open(label_path, 'r') as f:
+            return sum(1 for _ in f)
+    return 0
+
 def process_function(engine, batch):
     img_path = batch
-    results = model(img_path, save=True)
+    label_path = labels_dir / f"{img_path.stem}.txt"
+    
+    results = model(img_path, save=True, conf=0.5, iou=0.6)
     num_detections = len(results[0])
-    logging.info(f'Image: {img_path.name} | Detections: {num_detections}')
+    
+    num_gt = get_gt_count(label_path)
+    
+    logging.info(f'Image: {img_path.name} | Detections: {num_detections}/{num_gt}')
     
     writer.add_scalar('Detections per Image', num_detections, engine.state.iteration)
-    return num_detections
+    writer.add_scalar('Ground Truth per Image', num_gt, engine.state.iteration)
+    
+    return num_detections, num_gt
 
 engine = Engine(process_function)
 
